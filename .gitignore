@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.private/
 .DS_Store
 .env
 .env.*

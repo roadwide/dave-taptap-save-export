@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only TapTap cloud-save export using a local HAR and client token."""
+"""Read-only TapTap cloud-save export using QR authorization or a local HAR."""
 
 import argparse
 import base64
@@ -301,6 +301,8 @@ def download_save(save, output, index):
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    qr = commands.add_parser("qr-export", help="Scan with TapTap to export DAVE THE DIVER saves; no configuration needed")
+    qr.add_argument("--output-root", type=Path, help="Optional parent directory for new timestamped exports")
     metadata = commands.add_parser("metadata", help="Extract IL2CPP metadata without running an APK")
     source = metadata.add_mutually_exclusive_group(required=True)
     source.add_argument("--apk", type=Path)
@@ -319,9 +321,12 @@ def parser():
 
 
 def main():
-    args = parser().parse_args()
+    args = parser().parse_args(sys.argv[1:] or ["qr-export"])
     try:
-        if args.command == "metadata":
+        if args.command == "qr-export":
+            from taptap_qr import run
+            run(args.output_root)
+        elif args.command == "metadata":
             extract_metadata(args)
         else:
             entries = load_har(args.har)
@@ -343,6 +348,9 @@ def main():
     except urllib.error.HTTPError as error:
         print(f"HTTP {error.code}: request failed. Check token validity, client token, and SDK compatibility. Response and URL omitted.", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("已取消扫码或导出；已下载文件保留。", file=sys.stderr)
+        return 130
     except (ExportError, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, urllib.error.URLError) as error:
         # Raw exceptions can include URLs, local identities, or server response content.
         message = str(error) if isinstance(error, ExportError) else "Input, file, archive, or network error; details omitted to avoid exposing private data"
@@ -352,4 +360,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # QR support imports this module too; keep a single ExportError class when
+    # this file was launched as a script, so errors stay sanitized by main().
+    sys.modules.setdefault("taptap_save", sys.modules[__name__])
     raise SystemExit(main())
